@@ -396,7 +396,7 @@ function Apply-Policy {
         Write-Error "Failed to set/verify AllowTelemetry: $($_.Exception.Message)"
         exit $EXIT_REGISTRY_FAILED
     }
-
+}
 function Rollback-Policy {
     param([object]$State)
     $prev = $State.AllowTelemetry
@@ -552,7 +552,7 @@ try {
                     -DiagStatus $svc.Status `
                     -DiagStartType $svc.StartType
         }
-    }
+
 
     $changed = $false
     $changed = (Apply-Policy) -or $false
@@ -571,4 +571,3 @@ try {
     }
     exit 1
 }
-
