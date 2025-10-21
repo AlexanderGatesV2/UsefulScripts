@@ -339,7 +339,7 @@ function Write-State {
     param(
         [Parameter(Mandatory)] [int] $AllowTelemetryValue,
         [Parameter(Mandatory)] [bool] $AllowTelemetryExists,
-        [Parameter(Mandatory)] [string] $AllowTelemetryType,
+        [string] $AllowTelemetryType = 'Unknown',
         [Parameter(Mandatory)] [bool] $DiagExists,
         [Parameter(Mandatory)] [string] $DiagStatus,
         [Parameter(Mandatory)] [string] $DiagStartType
@@ -372,20 +372,30 @@ function Apply-Policy {
         Write-Log "Policy managed warning issued."
     }
 
+    # Early no-op if already correct
     $current = Get-PolicyValue
     if ($current.Exists -and $current.Value -eq $DesiredTelemetry -and $current.Type -eq 'DWord') {
-        Write-Log "AllowTelemetry already $DesiredTelemetry (no change)"
+        Write-Log "AllowTelemetry already $DesiredTelemetry (REG_DWORD) — no change."
         return $false
     }
 
     try {
+        # Force REG_DWORD write
         Set-PolicyValue -Value $DesiredTelemetry
+
+        # Mandatory read-back verification
+        $post = Get-PolicyValue
+        if (-not $post.Exists -or $post.Type -ne 'DWord' -or [int]$post.Value -ne $DesiredTelemetry) {
+            Write-Error "Verification failed: AllowTelemetry is not REG_DWORD=0 after write (Exists=$($post.Exists), Type=$($post.Type), Value=$($post.Value)). This system may be policy-managed."
+            exit $EXIT_REGISTRY_FAILED
+        }
+
+        Write-Log "AllowTelemetry verified as REG_DWORD=$DesiredTelemetry"
         return $true
     } catch {
-        Write-Error "Failed to set AllowTelemetry: $($_.Exception.Message)"
+        Write-Error "Failed to set/verify AllowTelemetry: $($_.Exception.Message)"
         exit $EXIT_REGISTRY_FAILED
     }
-}
 
 function Rollback-Policy {
     param([object]$State)
@@ -457,9 +467,11 @@ function Show-Interactive {
             if ($EnableRollbackLocal -and $PSCmdlet.ShouldProcess('System', 'Capture rollback state')) {
                 $cur = Get-PolicyValue
                 $svc = Get-DiagTrackInfo
+                $curType = if ($null -ne $cur.Type -and "$($cur.Type)".Length -gt 0) { [string]$cur.Type } else { 'Unknown' }
+
                 Write-State -AllowTelemetryValue ([int]($cur.Value)) `
                             -AllowTelemetryExists ([bool]$cur.Exists) `
-                            -AllowTelemetryType ([string]$cur.Type) `
+                            -AllowTelemetryType $curType `
                             -DiagExists $svc.Exists `
                             -DiagStatus $svc.Status `
                             -DiagStartType $svc.StartType
@@ -531,13 +543,14 @@ try {
     if ($EnableRollback) {
         $cur = Get-PolicyValue
         $svc = Get-DiagTrackInfo
-        if ($PSCmdlet.ShouldProcess($StatePath, 'Capture rollback state')) {
-            Write-State -AllowTelemetryValue ([int]($cur.Value)) `
-                        -AllowTelemetryExists ([bool]$cur.Exists) `
-                        -AllowTelemetryType ([string]$cur.Type) `
-                        -DiagExists $svc.Exists `
-                        -DiagStatus $svc.Status `
-                        -DiagStartType $svc.StartType
+        $curType = if ($null -ne $cur.Type -and "$($cur.Type)".Length -gt 0) { [string]$cur.Type } else { 'Unknown' }
+        
+        Write-State -AllowTelemetryValue ([int]($cur.Value)) `
+                    -AllowTelemetryExists ([bool]$cur.Exists) `
+                    -AllowTelemetryType $curType `
+                    -DiagExists $svc.Exists `
+                    -DiagStatus $svc.Status `
+                    -DiagStartType $svc.StartType
         }
     }
 
@@ -558,3 +571,4 @@ try {
     }
     exit 1
 }
+
