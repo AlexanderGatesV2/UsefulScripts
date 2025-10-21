@@ -140,7 +140,7 @@ function Remove-SubKeyIfExists {
             return $false
         }
     } catch {
-        Write-Warning "Failed to delete $SubKeyPath: $_"
+        Write-Warning "Failed to delete $($SubKeyPath): $_"
         return $false
     }
 }
